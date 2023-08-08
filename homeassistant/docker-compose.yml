@@ -1,0 +1,83 @@
+services:
+  homeassistant:
+    image: homeassistant/home-assistant:stable
+    container_name: homeassistant
+    networks:
+      - proxy
+      - homeassistant-net
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ}
+    ports:
+      - 8123:8123
+    privileged: true
+    depends_on:
+      - mosquitto
+      - frigate
+    volumes:
+      - /docker/homeassistant/config:/config
+      - /etc/localtime:/etc/localtime:ro
+    labels:
+      - "traefik.http.routers.homeassistant.rule=Host(`homeassistant.${DOMAIN_NAME}`) || Host(`home.${DOMAIN_NAME}`)"
+      - "traefik.docker.network=proxy" # Without specifying this a network is chosen randomly, so connecting via traefik only works 50% of the time
+#      - "traefik.http.routers.homeassistant.middlewares=default-headers@file"
+      - "traefik.http.routers.homeassistant.entrypoints=https"
+      - "traefik.http.routers.homeassistant.tls=true"
+      - "traefik.http.services.homeassistant.loadbalancer.server.port=8123"
+
+  mosquitto:
+    image: eclipse-mosquitto
+    container_name: mosquitto
+    networks:
+      - homeassistant-net
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ}
+    volumes:
+      - /docker/mosquitto/config:/mosquitto/config
+      - /docker/mosquitto/log:/mosquitto/log
+      - /docker/mosquitto/data:/mosquitto/data
+    ports:
+      - 1883:1883
+      - 9001:9001
+    labels:
+      - "traefik.enable=false"
+
+  frigate:
+    image: blakeblackshear/frigate:stable
+    container_name: frigate
+    networks:
+      - proxy
+      - homeassistant-net
+    restart: unless-stopped
+    privileged: true
+    shm_size: "64mb"
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /docker/frigate/config.yml:/config/config.yml:ro
+      - /docker/frigate/frigate.db:/media/frigate/frigate.db
+      - /NVR:/media/frigate
+      - /dev/apex_0:/dev/apex_0 # pass through google coral TPU
+      - type: tmpfs # Optional: 1GB of memory, reduces SSD/SD Card wear
+        target: /tmp/cache
+        tmpfs:
+          size: 1000000000
+    ports:
+      - 5000:5000
+      - 1935:1935
+    environment:
+      - TZ=${TZ}
+    env_file:
+      - frigate.env
+    labels:
+      - "traefik.http.routers.frigate.rule=Host(`frigate.${DOMAIN_NAME}`)"
+      - "traefik.docker.network=proxy"
+      - "traefik.http.routers.frigate.entrypoints=https"
+      - "traefik.http.routers.frigate.tls=true"
+      - "traefik.http.services.frigate.loadbalancer.server.port=5000"
+
+networks:
+  proxy:
+    external: true
+  homeassistant-net:
+    name: homeassistant-net

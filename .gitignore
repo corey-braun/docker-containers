@@ -1,2 +1,4 @@
 */
-.env
+*.env
+!homeassistant/
+!docker-compose.yml
