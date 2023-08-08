@@ -1,0 +1,117 @@
+services:
+  traefik:
+    image: traefik:latest
+    container_name: traefik
+    restart: unless-stopped
+    networks:
+      proxy:
+        ipv4_address: 172.18.0.250
+    ports:
+      - ${HOST_IP}:80:80
+      - ${HOST_IP}:443:443
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /docker/traefik/traefik.yml:/traefik.yml:ro
+      - /docker/traefik/traefik.log:/traefik.log
+      - /docker/traefik/config.yml:/config.yml
+      - /ssl/${DOMAIN_NAME}/${DOMAIN_NAME}.fullchain.pem:/ssl/${DOMAIN_NAME}.fullchain.pem:ro
+      - /ssl/${DOMAIN_NAME}/${DOMAIN_NAME}.privatekey.pem:/ssl/${DOMAIN_NAME}.privatekey.pem:ro
+    environment:
+      - TZ=/${TZ}
+    labels:
+      - "traefik.http.routers.api.rule=Host(`traefik.${DOMAIN_NAME}`)"
+      - "traefik.http.routers.api.service=api@internal"
+      - "traefik.http.routers.api.middlewares=auth"
+      - "traefik.http.middlewares.auth.basicauth.usersfile=/run/secrets/traefik_login" ## File with 'user:hashed_pw'
+      - "traefik.http.routers.api.entrypoints=https"
+      - "traefik.http.routers.api.tls=true"
+    secrets:
+      - traefik_login
+#    extra_hosts:
+#      - host.docker.internal:172.17.0.1
+
+  whoami: # Test service
+    image: traefik/whoami:latest
+    container_name: "whoami"
+    networks:
+      - proxy
+    labels:
+      - "traefik.http.routers.whoami.rule=Host(`whoami.${DOMAIN_NAME}`)"
+      - "traefik.http.routers.whoami.entrypoints=https"
+      - "traefik.http.routers.whoami.tls=true"
+
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: portainer
+    restart: unless-stopped
+    networks:
+      - proxy
+    environment:
+      - TZ=/${TZ}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /etc/localtime:/etc/localtime:ro
+      - /docker/portainer/data:/data
+    labels:
+      - "traefik.http.routers.portainer.rule=Host(`portainer.${DOMAIN_NAME}`)"
+      - "traefik.http.routers.portainer.entrypoints=https"
+      - "traefik.http.routers.portainer.tls=true"
+      - "traefik.http.services.portainer.loadbalancer.server.port=9000"
+
+  unifi-controller:
+    image: linuxserver/unifi-controller:latest
+    container_name: unifi-controller
+    restart: unless-stopped
+    environment:
+      - TZ=/${TZ}
+    networks:
+      - proxy
+    volumes:
+      - /docker/unifi-controller/config:/config
+    ports:
+      - ${HOST_IP}:8443:8443
+      - ${HOST_IP}:3478:3478/udp
+      - ${HOST_IP}:10001:10001/udp
+      - ${HOST_IP}:8080:8080
+      - ${HOST_IP}:1900:1900/udp
+      - ${HOST_IP}:8843:8843
+      - ${HOST_IP}:8880:8880
+      - ${HOST_IP}:6789:6789
+      - ${HOST_IP}:5514:5514/udp
+    labels:
+      - "traefik.http.routers.unifi.rule=Host(`unifi.${DOMAIN_NAME}`)"
+      - "traefik.http.routers.unifi.entrypoints=https"
+      - "traefik.http.routers.unifi.tls=true"
+      - "traefik.http.services.unifi.loadbalancer.server.port=8443"
+      - "traefik.http.services.unifi.loadbalancer.server.scheme=https"
+
+  emby:
+    image: emby-comskip-build
+    container_name: emby
+    restart: unless-stopped
+    hostname: emby
+    environment:
+      - TZ=/${TZ}
+    networks:
+      - proxy
+    volumes:
+      - /docker/emby/config:/config # Configuration directory
+      - /media/mediashare/Movies:/Movies # Movies shared from TrueNAS
+      - /media/mediashare/Shows:/Shows # TV Shows shared from TrueNAS
+      - /media/mediashare/Recordings:/Recordings # DVR recordings stored on TrueNAS
+      - /ssl/${DOMAIN_NAME}/${DOMAIN_NAME}.p12:/${DOMAIN_NAME}.p12:ro
+    ports:
+      - ${HOST_IP}:8920:8920
+    labels:
+      - "traefik.http.routers.emby.rule=Host(`emby.${DOMAIN_NAME}`)"
+      - "traefik.http.routers.emby.entrypoints=https"
+      - "traefik.http.routers.emby.tls=true"
+      - "traefik.http.services.emby.loadbalancer.server.port=8096"
+
+networks:
+  proxy:
+    external: true
+
+secrets:
+  traefik_login:
+    file: /docker/secrets/traefik_login
