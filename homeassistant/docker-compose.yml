@@ -18,11 +18,14 @@ services:
       - /docker/homeassistant/config:/config
       - /etc/localtime:/etc/localtime:ro
     labels:
-      - "traefik.http.routers.homeassistant.rule=Host(`homeassistant.${DOMAIN_NAME}`) || Host(`home.${DOMAIN_NAME}`)"
+      - "traefik.http.routers.homeassistant.rule=Host(`home.${DOMAIN_NAME}`)"
+      - "traefik.http.routers.homeassistant-external.rule=Host(`homeassistant.${DOMAIN_NAME}`)"
       - "traefik.docker.network=proxy" # Without specifying this a network is chosen randomly, so connecting via traefik only works 50% of the time
 #      - "traefik.http.routers.homeassistant.middlewares=default-headers@file"
       - "traefik.http.routers.homeassistant.entrypoints=https"
+      - "traefik.http.routers.homeassistant-external.entrypoints=https_external"
       - "traefik.http.routers.homeassistant.tls=true"
+      - "traefik.http.routers.homeassistant-external.tls=true"
       - "traefik.http.services.homeassistant.loadbalancer.server.port=8123"
 
   mosquitto:
@@ -44,7 +47,7 @@ services:
       - "traefik.enable=false"
 
   frigate:
-    image: blakeblackshear/frigate:stable
+    image: ghcr.io/blakeblackshear/frigate:stable
     container_name: frigate
     networks:
       - proxy
@@ -55,10 +58,10 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /docker/frigate/config.yml:/config/config.yml:ro
-      - /docker/frigate/frigate.db:/media/frigate/frigate.db
+      - /docker/frigate/db:/db
       - /NVR:/media/frigate
       - /dev/apex_0:/dev/apex_0 # pass through google coral TPU
-      - type: tmpfs # Optional: 1GB of memory, reduces SSD/SD Card wear
+      - type: tmpfs # 1GB of memory, reduces SSD wear
         target: /tmp/cache
         tmpfs:
           size: 1000000000
@@ -72,6 +75,8 @@ services:
     labels:
       - "traefik.http.routers.frigate.rule=Host(`frigate.${DOMAIN_NAME}`)"
       - "traefik.docker.network=proxy"
+      - "traefik.http.routers.frigate.middlewares=auth"
+      - "traefik.http.middlewares.auth.basicauth.usersfile=/run/secrets/traefik_login"
       - "traefik.http.routers.frigate.entrypoints=https"
       - "traefik.http.routers.frigate.tls=true"
       - "traefik.http.services.frigate.loadbalancer.server.port=5000"

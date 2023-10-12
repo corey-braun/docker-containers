@@ -1,0 +1,3 @@
+[submodule "comskip-build-static"]
+	path = comskip-build-static
+	url = https://github.com/corey-braun/comskip-build-static

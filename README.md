@@ -1,3 +1,3 @@
-Files defining the docker containers running on my main ubuntu server VM.
+These files define the docker containers I currently use to run services at home.
 
-Includes `docker-compose.yml` files for main services (in root directory) and home assistant services (in homeassistant/).
+Includes `docker-compose.yml` files defining main services (in root directory) and home assistant services (in homeassistant/).

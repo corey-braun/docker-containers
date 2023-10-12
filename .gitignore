@@ -2,3 +2,4 @@
 *.env
 !homeassistant/
 !docker-compose.yml
+!comskip-build-static/
