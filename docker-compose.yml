@@ -1,28 +1,54 @@
 services:
+## Template for adding new services; Delete/edit sections as needed
+#  template:
+#    image: template
+#    build: template
+#    container_name: template
+#    hostname: template
+#    restart: unless-stopped
+#    user: "${UID}:${GID}"
+#    depends_on:
+#    networks:
+#      - proxy
+#    ports:
+#      - ${BIND_IP}
+#    volumes:
+#      - ./template:/
+#    environment:
+#      - TZ
+#      - UID
+#      - GID
+#    env_file: template.env
+#    labels:
+#      - "traefik.enable=false"
+#    secrets:
+
   traefik:
     image: traefik:latest
     container_name: traefik
+    hostname: traefik
     restart: unless-stopped
     networks:
-      - proxy
+      proxy:
+        ipv4_address: 172.18.0.250
     ports:
-      - ${HOST_IP}:80:80
-      - ${HOST_IP}:443:443
-      - ${HOST_IP}:444:444
+      - ${BIND_IP}80:80
+      - ${BIND_IP}443:443
+      - ${BIND_IP}444:444
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /docker/traefik/traefik.yml:/traefik.yml:ro
-      - /docker/traefik/traefik.log:/traefik.log
-      - /docker/traefik/config.yml:/config.yml
+      - ./traefik/traefik.yml:/traefik.yml:ro
+      - ./traefik/traefik.log:/traefik.log
+      - ./traefik/config.yml:/config.yml
       - /ssl/${DOMAIN_NAME}/${DOMAIN_NAME}.fullchain.pem:/ssl/${DOMAIN_NAME}.fullchain.pem:ro
       - /ssl/${DOMAIN_NAME}/${DOMAIN_NAME}.privatekey.pem:/ssl/${DOMAIN_NAME}.privatekey.pem:ro
     environment:
-      - TZ=${TZ}
+      - TZ
     labels:
       - "traefik.http.routers.api.rule=Host(`traefik.${DOMAIN_NAME}`)"
       - "traefik.http.routers.api.service=api@internal"
       - "traefik.http.routers.api.middlewares=auth"
-      - "traefik.http.middlewares.auth.basicauth.usersfile=/run/secrets/traefik_login" ## File with 'user:hashed_pw'
+      - "traefik.http.middlewares.auth.basicauth.usersfile=/run/secrets/traefik_login"
       - "traefik.http.routers.api.entrypoints=https"
       - "traefik.http.routers.api.tls=true"
     secrets:
@@ -31,8 +57,12 @@ services:
   whoami: # Test service
     image: traefik/whoami:latest
     container_name: whoami
+    hostname: whoami
+    restart: unless-stopped
     networks:
       - proxy
+    environment:
+      - TZ
     labels:
       - "traefik.http.routers.whoami.rule=Host(`whoami.${DOMAIN_NAME}`)"
       - "traefik.http.routers.whoami.entrypoints=https"
@@ -41,15 +71,16 @@ services:
   portainer:
     image: portainer/portainer-ce:latest
     container_name: portainer
+    hostname: portainer
     restart: unless-stopped
     networks:
       - proxy
-    environment:
-      - TZ=${TZ}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /etc/localtime:/etc/localtime:ro
-      - /docker/portainer/data:/data
+      - ./portainer/data:/data
+    environment:
+      - TZ
     labels:
       - "traefik.http.routers.portainer.rule=Host(`portainer.${DOMAIN_NAME}`)"
       - "traefik.http.routers.portainer.entrypoints=https"
@@ -59,33 +90,34 @@ services:
   unifi:
     image: linuxserver/unifi-network-application:latest
     container_name: unifi
+    hostname: unifi
     restart: unless-stopped
-    environment:
-      - PUID=${UID}
-      - PGID=${GID}
-      - TZ=${TZ}
-      - MONGO_USER=unifi
-      - FILE__MONGO_PASS=/run/secrets/unifi_db_pw ## edit with "vi -b -c 'set noeol' <file>" to ensure vi doesn't add trailing newline
-      - MONGO_HOST=unifi-db
-      - MONGO_PORT=27017
-      - MONGO_DBNAME=unifi
+    depends_on:
+      - unifi-db
     networks:
       - proxy
       - unifi
-    volumes:
-      - /docker/unifi/config:/config
     ports:
-      - ${HOST_IP}:8443:8443
-      - ${HOST_IP}:3478:3478/udp
-      - ${HOST_IP}:10001:10001/udp
-      - ${HOST_IP}:8080:8080
-      - ${HOST_IP}:1900:1900/udp
-      - ${HOST_IP}:8843:8843
-      - ${HOST_IP}:8880:8880
-      - ${HOST_IP}:6789:6789
-      - ${HOST_IP}:5514:5514/udp
-    depends_on:
-      - unifi-db
+      - ${BIND_IP}8443:8443
+      - ${BIND_IP}3478:3478/udp
+      - ${BIND_IP}10001:10001/udp
+      - ${BIND_IP}8080:8080
+      - ${BIND_IP}1900:1900/udp
+      - ${BIND_IP}8843:8843
+      - ${BIND_IP}8880:8880
+      - ${BIND_IP}6789:6789
+      - ${BIND_IP}5514:5514/udp
+    volumes:
+      - ./unifi/config:/config
+    environment:
+      - TZ
+      - PUID=${UID}
+      - PGID=${GID}
+      - MONGO_HOST=unifi-db
+      - MONGO_PORT=27017
+      - MONGO_USER=unifi
+      - FILE__MONGO_PASS=/run/secrets/unifi_db_pw
+      - MONGO_DBNAME=unifi
     labels:
       - "traefik.http.routers.unifi.rule=Host(`unifi.${DOMAIN_NAME}`)"
       - "traefik.docker.network=proxy"
@@ -99,13 +131,16 @@ services:
   unifi-db:
     image: mongo:4.4
     container_name: unifi-db
+    hostname: unifi-db
     restart: unless-stopped
     user: "${UID}:${GID}"
     networks:
       - unifi
     volumes:
-      - /docker/unifi/db:/data/db
-      - /docker/unifi/mongodb-init.js:/docker-entrypoint-initdb.d/mongodb-init.js:ro
+      - ./unifi/db:/data/db
+      - ./unifi/mongodb-init.js:/docker-entrypoint-initdb.d/mongodb-init.js:ro
+    environment:
+      - TZ
     labels:
       - "traefik.enable=false"
 
@@ -114,21 +149,20 @@ services:
     container_name: emby
     hostname: emby
     restart: unless-stopped
-    environment:
-      - UID=${UID}
-      - GID=${GID}
-      - TZ=${TZ}
     networks:
       - proxy
-    volumes:
-      - /docker/emby/config:/config # Configuration directory
-      - /docker/emby/comskip:/usr/bin/comskip # Static comskip binary, built in "comskip-build-static/"
-      - /media/mediashare/Movies:/Movies # Movies shared from TrueNAS
-      - /media/mediashare/Shows:/Shows # TV Shows shared from TrueNAS
-      - /media/mediashare/Recordings:/Recordings # DVR recordings stored on TrueNAS
-      - /ssl/${DOMAIN_NAME}/${DOMAIN_NAME}.p12:/${DOMAIN_NAME}.p12:ro
     ports:
-      - ${HOST_IP}:8920:8920
+      - ${BIND_IP}8920:8920
+    volumes:
+      - ./emby/config:/config
+      - ./emby/comskip:/usr/bin/comskip ## Static comskip binary, built in "comskip-build-static/"
+      - ./emby/ComSkipper.dll:/config/plugins/ComSkipper.dll ## BillOatmanWork/Emby.ComSkipper v2.0.0.0
+      - /mnt/media:/mnt/media
+      - /ssl/${DOMAIN_NAME}/${DOMAIN_NAME}.p12:/${DOMAIN_NAME}.p12:ro
+    environment:
+      - TZ
+      - UID
+      - GID
     labels:
       - "traefik.http.routers.emby.rule=Host(`emby.${DOMAIN_NAME}`)"
       - "traefik.http.routers.emby.entrypoints=https"
@@ -143,6 +177,6 @@ networks:
 
 secrets:
   traefik_login:
-    file: /docker/secrets/traefik_login
+    file: ./secrets/traefik_login ## Format: <user>:<hashed_pw>
   unifi_db_pw:
-    file: /docker/secrets/unifi_db_pw
+    file: ./secrets/unifi_db_pw ## Edit with "vi -bc 'set noeol' <file>" to ensure vim doesn't automatically add a trailing newline
